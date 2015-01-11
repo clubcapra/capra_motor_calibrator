@@ -1,0 +1,37 @@
+#!/usr/bin/env python
+
+import roslib
+roslib.load_manifest("capra_motor_calibrator")
+import rospy
+from capra_motor_calibrator.msg import *
+from capra_motor_calibrator.srv import *
+from geometry_msgs.msg import Twist, Pose2D
+
+
+# use in straight hallway with a lot of detail
+def calibrate_service(req):
+    calibration_time = req.calibration_time.to_sec()
+    rospy.logdebug("calibrating motors for a duration of %s s." % str(calibration_time))
+
+    start_time = rospy.get_time()
+    last_time = start_time
+    rate = rospy.Rate(10)
+
+    correction = 0
+    last_theta = 0
+    rate.sleep()  # to avoid risk of division by zero in the first loop
+    while (rospy.get_time() - start_time) < calibration_time and not rospy.is_shutdown():
+        msg = rospy.wait_for_message("/pose2D", Pose2D, 1)
+        # substract so the correction is opposite sign of deviation
+        correction -= (msg.theta - last_theta) / (rospy.get_time() - last_time)
+        last_time = rospy.get_time()
+        last_theta = msg.theta
+        rate.sleep()
+
+    correction /= req.calibration_time.to_sec()
+    response = CalibrateResponse(0, 0)
+    return response
+
+rospy.init_node("motor_calibrator")
+cmd_vel = rospy.Publisher("/cmd_vel", Twist, queue_size=10)
+rospy.spin()
